@@ -1,0 +1,1581 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>מערכת ניהול מחסני השבט - Firebase</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <!-- ============================================
+         🔥 FIREBASE - החלף את הערכים האלה בשלך!
+         ============================================ -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword }
+            from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, getDoc, getDocs,
+                 onSnapshot, updateDoc, deleteDoc, query, where }
+            from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+        // ⚠️ החלף את הערכים האלה בערכים מפרויקט Firebase שלך!
+        const firebaseConfig = {
+            apiKey: "AIzaSyBx4HR1aSxhIfBUnAXpaBCN2yQSJbiw1js",
+            authDomain: "dj-coosha.firebaseapp.com",
+            projectId: "dj-coosha",
+            storageBucket: "dj-coosha.firebasestorage.app",
+            messagingSenderId: "411110467549",
+            appId: "1:411110467549:web:c386530cd0a1f35cd5f834",
+            measurementId: "G-ED1F10QXXF"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // ─── חשיפה גלובלית של Firebase לשאר הקוד ───
+        window._fb = { auth, db, signInWithEmailAndPassword, signOut,
+                       onAuthStateChanged, createUserWithEmailAndPassword,
+                       collection, doc, setDoc, getDoc, getDocs,
+                       onSnapshot, updateDoc, deleteDoc, query, where };
+
+        // הפעל את האפליקציה לאחר טעינת Firebase
+        window.addEventListener('load', () => {
+            if (typeof initApp === 'function') initApp();
+        });
+    </script>
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        /* ── Spinner ── */
+        #loadingOverlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.55);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 9999;
+        }
+        .spinner {
+            width: 56px; height: 56px;
+            border: 6px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Toast ── */
+        #toast {
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: #2d3748; color: white;
+            padding: 14px 28px; border-radius: 30px;
+            font-size: 1em; font-weight: bold;
+            opacity: 0; transition: opacity 0.3s;
+            z-index: 9998; pointer-events: none;
+        }
+        #toast.show { opacity: 1; }
+        #toast.success { background: #38a169; }
+        #toast.error   { background: #e53e3e; }
+        #toast.info    { background: #3182ce; }
+
+        .container {
+            max-width: 1400px; margin: 0 auto;
+            background: white; border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        /* ── Login ── */
+        .login-screen {
+            display: flex; align-items: center; justify-content: center;
+            min-height: 100vh; padding: 20px;
+        }
+        .login-box {
+            background: white; padding: 40px; border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 400px; width: 100%;
+        }
+        .login-header { text-align: center; margin-bottom: 30px; }
+        .login-header h1 { font-size: 2em; color: #2c5282; margin-bottom: 10px; }
+        .login-header p  { color: #718096; }
+
+        /* ── Header ── */
+        header {
+            background: linear-gradient(135deg, #2c5282 0%, #1a365d 100%);
+            color: white; padding: 20px 30px;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+        .header-left { display: flex; align-items: center; gap: 20px; }
+        .header-left h1 { font-size: 2em; margin-bottom: 5px; }
+        .header-right { text-align: left; }
+        .user-info {
+            background: rgba(255,255,255,0.2);
+            padding: 10px 20px; border-radius: 10px; margin-bottom: 10px;
+        }
+        .user-role { font-size: 0.9em; opacity: 0.9; }
+
+        /* ── Realtime indicator ── */
+        .realtime-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: rgba(72,187,120,0.25);
+            border: 1px solid rgba(72,187,120,0.5);
+            color: #c6f6d5; padding: 4px 12px;
+            border-radius: 20px; font-size: 0.8em;
+            margin-top: 6px;
+        }
+        .realtime-dot {
+            width: 8px; height: 8px; background: #48bb78;
+            border-radius: 50%; animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%,100% { opacity: 1; }
+            50%      { opacity: 0.3; }
+        }
+
+        /* ── Tabs ── */
+        .tabs {
+            display: flex; background: #f7fafc;
+            border-bottom: 3px solid #e2e8f0; overflow-x: auto;
+        }
+        .tab {
+            flex: 1; min-width: 150px; padding: 20px; text-align: center;
+            background: #f7fafc; border: none; font-size: 1.1em;
+            font-weight: bold; cursor: pointer; transition: all 0.3s; color: #4a5568;
+        }
+        .tab:hover { background: #edf2f7; }
+        .tab.active { background: white; color: #2c5282; border-bottom: 3px solid #2c5282; margin-bottom: -3px; }
+        .tab.hidden { display: none; }
+
+        /* ── Content ── */
+        .content { padding: 30px; max-height: calc(100vh - 200px); overflow-y: auto; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+
+        /* ── Forms ── */
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(250px,1fr)); gap: 20px; margin-bottom: 20px; }
+        .form-group { display: flex; flex-direction: column; }
+        label { font-weight: bold; margin-bottom: 8px; color: #2d3748; font-size: 1em; }
+        input, select, textarea {
+            padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px;
+            font-size: 1em; transition: all 0.3s; font-family: inherit;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none; border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102,126,234,0.1);
+        }
+
+        /* ── Buttons ── */
+        .btn {
+            padding: 14px 28px; border: none; border-radius: 8px;
+            font-size: 1.1em; font-weight: bold; cursor: pointer;
+            transition: all 0.3s; text-align: center;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; box-shadow: 0 4px 15px rgba(102,126,234,0.4);
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(102,126,234,0.6); }
+        .btn-secondary { background: #48bb78; color: white; }
+        .btn-danger    { background: #f56565; color: white; }
+        .btn-warning   { background: #ed8936; color: white; }
+
+        /* ── Cards ── */
+        .items-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(320px,1fr)); gap: 20px; margin-top: 20px; }
+        .item-card, .request-card, .user-card {
+            background: white; border: 2px solid #e2e8f0;
+            border-radius: 12px; padding: 20px;
+            transition: all 0.3s; position: relative;
+        }
+        .item-card:hover, .request-card:hover, .user-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            border-color: #667eea;
+        }
+        .item-image          { width:100%; height:200px; object-fit:cover; border-radius:8px; margin-bottom:15px; }
+        .item-image-placeholder {
+            width:100%; height:200px;
+            background: linear-gradient(135deg,#e2e8f0 0%,#cbd5e0 100%);
+            border-radius:8px; margin-bottom:15px;
+            display:flex; align-items:center; justify-content:center;
+            font-size:3em; color:#a0aec0;
+        }
+        .image-upload-area {
+            border: 3px dashed #cbd5e0; border-radius: 12px; padding: 40px;
+            text-align: center; cursor: pointer; transition: all 0.3s; margin-bottom: 20px;
+        }
+        .image-upload-area:hover { border-color: #667eea; background: #f7fafc; }
+        .image-upload-area.has-image { border-style: solid; border-color: #48bb78; padding: 20px; }
+        .preview-image { max-width:100%; max-height:300px; border-radius:8px; margin-top:10px; }
+        .item-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; }
+        .item-name     { font-size:1.3em; font-weight:bold; color:#2d3748; }
+        .item-category { display:inline-block; padding:6px 12px; background:#667eea; color:white; border-radius:20px; font-size:0.85em; font-weight:bold; }
+        .badge         { display:inline-block; padding:6px 12px; border-radius:20px; font-size:0.85em; font-weight:bold; }
+        .badge-admin   { background:#f56565; color:white; }
+        .badge-warehouse { background:#48bb78; color:white; }
+        .badge-shavag  { background:#4299e1; color:white; }
+        .item-details  { margin:15px 0; }
+        .item-detail   { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #f7fafc; }
+        .item-detail:last-child { border-bottom:none; }
+        .detail-label  { font-weight:bold; color:#4a5568; }
+        .detail-value  { color:#2d3748; }
+        .stock-status  { padding:8px 16px; border-radius:20px; font-weight:bold; text-align:center; margin:15px 0; }
+        .stock-good    { background:#c6f6d5; color:#22543d; }
+        .stock-low     { background:#fed7d7; color:#742a2a; }
+        .stock-critical{ background:#fc8181; color:#742a2a; }
+        .item-actions  { display:flex; gap:10px; margin-top:15px; flex-wrap:wrap; }
+        .item-actions button { flex:1; padding:10px; font-size:0.9em; min-width:80px; }
+        .search-bar    { margin-bottom:20px; }
+        .search-bar input { width:100%; padding:15px; font-size:1.1em; }
+        .filters       { display:flex; gap:15px; margin-bottom:20px; flex-wrap:wrap; }
+        .filters select { flex:1; min-width:200px; }
+        .stats-grid    { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:20px; margin-bottom:30px; }
+        .stat-card     { background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); color:white; padding:25px; border-radius:12px; text-align:center; box-shadow:0 4px 15px rgba(102,126,234,0.3); }
+        .stat-number   { font-size:2.5em; font-weight:bold; margin-bottom:5px; }
+        .stat-label    { font-size:1em; opacity:0.9; }
+        .order-card    { background:white; border:2px solid #e2e8f0; border-radius:12px; padding:20px; margin-bottom:15px; }
+        .order-header  { display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; }
+        .order-status  { padding:6px 12px; border-radius:20px; font-weight:bold; font-size:0.9em; }
+        .status-pending  { background:#fef5e7; color:#d68910; }
+        .status-approved { background:#d4edda; color:#155724; }
+        .status-rejected { background:#f8d7da; color:#721c24; }
+        .status-received { background:#cce5ff; color:#004085; }
+        .empty-state      { text-align:center; padding:60px 20px; color:#a0aec0; }
+        .empty-state-icon { font-size:4em; margin-bottom:20px; }
+        .empty-state-text { font-size:1.3em; font-weight:bold; }
+        .quick-actions    { display:flex; gap:15px; margin-bottom:30px; flex-wrap:wrap; }
+        .quick-action     { flex:1; min-width:200px; }
+        .alert { padding:15px 20px; border-radius:8px; margin-bottom:20px; font-weight:bold; }
+        .alert-info    { background:#cce5ff; color:#004085; border:2px solid #b8daff; }
+        .alert-warning { background:#fff3cd; color:#856404; border:2px solid #ffeaa7; }
+        .alert-success { background:#d4edda; color:#155724; border:2px solid #c3e6cb; }
+        .org-tree      { margin:20px 0; }
+        .org-node      { margin:10px 0 10px 20px; padding:15px; border:2px solid #e2e8f0; border-radius:8px; background:white; }
+        .org-node-header { display:flex; justify-content:space-between; align-items:center; padding:10px; background:#f7fafc; border-radius:6px; margin-bottom:10px; }
+        .org-node-info   { display:flex; align-items:center; gap:15px; flex-wrap:wrap; }
+        .org-node-children { margin-right:30px; border-right:2px solid #e2e8f0; padding-right:10px; }
+        .org-level-0 { border-color:#667eea; }
+        .org-level-1 { border-color:#48bb78; }
+        .org-level-2 { border-color:#4299e1; }
+        .org-level-3 { border-color:#ed8936; }
+        .custom-fields { background:#f7fafc; padding:20px; border-radius:8px; margin:20px 0; }
+        .custom-field-row { display:grid; grid-template-columns:1fr 1fr auto; gap:10px; margin-bottom:10px; align-items:end; }
+        table { width:100%; border-collapse:collapse; margin:20px 0; }
+        th, td { padding:12px; text-align:right; border-bottom:1px solid #e2e8f0; }
+        th { background:#f7fafc; font-weight:bold; color:#2d3748; }
+        tr:hover { background:#f7fafc; }
+        .modal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center; }
+        .modal.active { display:flex; }
+        .modal-content { background:white; padding:30px; border-radius:20px; max-width:600px; width:90%; max-height:90vh; overflow-y:auto; }
+        .modal-header { font-size:1.5em; font-weight:bold; margin-bottom:20px; color:#2d3748; display:flex; justify-content:space-between; align-items:center; }
+        .close-modal { cursor:pointer; font-size:1.5em; color:#a0aec0; }
+        .close-modal:hover { color:#f56565; }
+        @media(max-width:768px) {
+            header { flex-direction:column; gap:15px; }
+            .header-right { text-align:center; }
+            .tabs { flex-direction:column; }
+            .form-grid, .items-grid { grid-template-columns:1fr; }
+            .item-actions { flex-direction:column; }
+            .item-actions button { width:100%; }
+        }
+        .hidden { display:none !important; }
+    </style>
+</head>
+<body>
+
+<!-- Loading Overlay -->
+<div id="loadingOverlay">
+    <div class="spinner"></div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Login Screen -->
+<div id="loginScreen" class="login-screen" style="display:none;">
+    <div class="login-box">
+        <div class="login-header">
+            <h1>🏕️ מערכת ניהול מחסנים</h1>
+            <p>התחברות למערכת</p>
+        </div>
+        <div class="form-group" style="margin-bottom:20px;">
+            <label>אימייל</label>
+            <input type="email" id="loginEmail" placeholder="your@email.com">
+        </div>
+        <div class="form-group" style="margin-bottom:20px;">
+            <label>סיסמה</label>
+            <input type="password" id="loginPassword" placeholder="הזן סיסמה"
+                   onkeypress="if(event.key==='Enter') doLogin()">
+        </div>
+        <button class="btn btn-primary" style="width:100%;margin-bottom:10px;" onclick="doLogin()">התחבר</button>
+        <div style="text-align:center;margin-top:20px;padding:15px;background:#f7fafc;border-radius:8px;font-size:0.9em;color:#718096;">
+            🔥 מופעל על Firebase — נתונים משותפים בזמן אמת
+        </div>
+    </div>
+</div>
+
+<!-- Edit User Modal -->
+<div id="editUserModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <span>עריכת משתמש</span>
+            <span class="close-modal" onclick="closeEditUserModal()">×</span>
+        </div>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>אימייל</label>
+                <input type="text" id="editUsername" disabled style="background:#f7fafc;">
+            </div>
+            <div class="form-group">
+                <label>שם מלא</label>
+                <input type="text" id="editFullName" placeholder="שם מלא">
+            </div>
+            <div class="form-group">
+                <label>תפקיד</label>
+                <select id="editUserRole">
+                    <option value="shavag">שכב"ג</option>
+                    <option value="warehouse">ראש מחסן</option>
+                    <option value="admin">מנהל</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>תפקיד/מעמד בעץ הארגוני</label>
+                <select id="editUserPosition"></select>
+            </div>
+            <div class="form-group">
+                <label>משתמש אב (ממונה)</label>
+                <select id="editUserParent">
+                    <option value="">אין - ברמה העליונה</option>
+                </select>
+            </div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:20px;">
+            <button class="btn btn-primary" onclick="saveEditUser()">שמור שינויים</button>
+            <button class="btn" style="background:#cbd5e0;color:#2d3748;" onclick="closeEditUserModal()">ביטול</button>
+        </div>
+    </div>
+</div>
+
+<!-- Main App -->
+<div id="mainApp" class="container" style="display:none;">
+    <header>
+        <div class="header-left">
+            <h1>🏕️ מערכת ניהול מחסנים</h1>
+        </div>
+        <div class="header-right">
+            <div class="user-info">
+                <div>👤 <strong id="currentUserName"></strong></div>
+                <div class="user-role" id="currentUserRole"></div>
+                <div class="user-role" id="currentUserPosition" style="font-size:0.85em;"></div>
+                <div class="realtime-badge">
+                    <div class="realtime-dot"></div>
+                    נתונים בזמן אמת
+                </div>
+            </div>
+            <button class="btn btn-danger" onclick="doLogout()">התנתק</button>
+        </div>
+    </header>
+
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('inventory',event)">📦 מלאי</button>
+        <button class="tab" id="tabOrders"         onclick="switchTab('orders',event)">🛒 הזמנות ציוד</button>
+        <button class="tab" id="tabShavagRequests" onclick="switchTab('shavagRequests',event)">📅 בקשות שכב"ג</button>
+        <button class="tab" id="tabAdd"            onclick="switchTab('add',event)">➕ הוספת פריט</button>
+        <button class="tab" id="tabStandards"      onclick="switchTab('standards',event)">📋 תקני מלאי</button>
+        <button class="tab" id="tabUsers"          onclick="switchTab('users',event)">👥 ניהול משתמשים</button>
+        <button class="tab" id="tabRoles"          onclick="switchTab('roles',event)">🏷️ ניהול תפקידים</button>
+        <button class="tab"                        onclick="switchTab('reports',event)">📊 דוחות</button>
+    </div>
+
+    <div class="content">
+        <!-- Inventory -->
+        <div id="inventory" class="tab-content active">
+            <div class="search-bar">
+                <input type="text" id="searchInput" placeholder="🔍 חיפוש פריט..." oninput="filterItems()">
+            </div>
+            <div class="filters">
+                <select id="warehouseFilter" onchange="filterItems()">
+                    <option value="">כל המחסנים</option>
+                    <option value="מחסן ראשי">מחסן ראשי</option>
+                    <option value="מחסן בנייה">מחסן בנייה</option>
+                    <option value="מחסן מטבח">מחסן מטבח</option>
+                    <option value="מחסן חשמל">מחסן חשמל</option>
+                </select>
+                <select id="categoryFilter" onchange="filterItems()">
+                    <option value="">כל הקטגוריות</option>
+                    <option value="בנייה מחנאית">בנייה מחנאית</option>
+                    <option value="ציוד משרדי">ציוד משרדי</option>
+                    <option value="ציוד כבד">ציוד כבד</option>
+                    <option value="ציוד בישול">ציוד בישול</option>
+                    <option value="חשמל ואלקטרוניקה">חשמל ואלקטרוניקה</option>
+                    <option value="אינסטלציה">אינסטלציה</option>
+                    <option value="כלים">כלים</option>
+                    <option value="אחר">אחר</option>
+                </select>
+                <select id="stockFilter" onchange="filterItems()">
+                    <option value="">כל המלאי</option>
+                    <option value="good">מלאי תקין</option>
+                    <option value="low">מלאי נמוך</option>
+                    <option value="critical">מלאי קריטי</option>
+                </select>
+            </div>
+            <div id="itemsContainer" class="items-grid"></div>
+        </div>
+
+        <!-- Orders -->
+        <div id="orders" class="tab-content">
+            <div class="quick-actions">
+                <button class="btn btn-primary quick-action" onclick="showOrderForm()">+ הזמנה חדשה</button>
+                <button class="btn btn-secondary quick-action" onclick="exportOrdersToExcel()">📊 ייצוא להזמנה (Excel)</button>
+            </div>
+            <div id="orderFormContainer" style="display:none;margin-bottom:30px;">
+                <h2 style="margin-bottom:20px;">הזמנת ציוד חדש</h2>
+                <div class="form-grid">
+                    <div class="form-group"><label>שם הפריט</label><input type="text" id="orderItemName" placeholder="לדוגמה: סנדות עץ"></div>
+                    <div class="form-group"><label>כמות</label><input type="number" id="orderQuantity" min="1" value="1"></div>
+                    <div class="form-group"><label>קטגוריה</label>
+                        <select id="orderCategory">
+                            <option value="בנייה מחנאית">בנייה מחנאית</option>
+                            <option value="ציוד משרדי">ציוד משרדי</option>
+                            <option value="ציוד כבד">ציוד כבד</option>
+                            <option value="ציוד בישול">ציוד בישול</option>
+                            <option value="חשמל ואלקטרוניקה">חשמל ואלקטרוניקה</option>
+                            <option value="אינסטלציה">אינסטלציה</option>
+                            <option value="כלים">כלים</option>
+                            <option value="אחר">אחר</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label>מחסן יעד</label>
+                        <select id="orderWarehouse">
+                            <option value="מחסן ראשי">מחסן ראשי</option>
+                            <option value="מחסן בנייה">מחסן בנייה</option>
+                            <option value="מחסן מטבח">מחסן מטבח</option>
+                            <option value="מחסן חשמל">מחסן חשמל</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom:20px;">
+                    <label>הערות</label>
+                    <textarea id="orderNotes" rows="3" placeholder="הערות נוספות..."></textarea>
+                </div>
+                <button class="btn btn-primary" onclick="submitOrder()">שלח הזמנה</button>
+                <button class="btn" style="background:#cbd5e0;color:#2d3748;margin-right:10px;" onclick="hideOrderForm()">ביטול</button>
+            </div>
+            <h2 style="margin-bottom:20px;">הזמנות פעילות</h2>
+            <div id="ordersContainer"></div>
+        </div>
+
+        <!-- Shavag Requests -->
+        <div id="shavagRequests" class="tab-content">
+            <div class="alert alert-info" id="shavagRequestsAlert">
+                📋 כאן תוכל לראות את כל בקשות הציוד של השכב"גים.
+            </div>
+            <div id="shavagRequestsHeader">
+                <div class="quick-actions">
+                    <button class="btn btn-primary quick-action" id="btnNewRequest" onclick="showShavagRequestForm()">+ בקשה חדשה</button>
+                    <button class="btn btn-secondary quick-action" id="btnExportRequests" onclick="exportShavagRequestsToExcel()">📊 ייצוא בקשות (Excel)</button>
+                </div>
+                <div id="shavagRequestFormContainer" style="display:none;margin-bottom:30px;">
+                    <h2 style="margin-bottom:20px;">בקשת ציוד לפעולה</h2>
+                    <div class="form-grid">
+                        <div class="form-group"><label>שם הפעולה</label><input type="text" id="reqActivityName" placeholder="לדוגמה: פעילת בנייה"></div>
+                        <div class="form-group"><label>תאריך הפעולה</label><input type="date" id="reqDate"></div>
+                        <div class="form-group"><label>שעת התחלה</label><input type="time" id="reqStartTime" value="16:00"></div>
+                        <div class="form-group"><label>שעת סיום</label><input type="time" id="reqEndTime" value="20:00"></div>
+                    </div>
+                    <h3 style="margin:20px 0 15px 0;">פריטי ציוד</h3>
+                    <div id="requestItemsContainer">
+                        <div class="form-grid request-item-row">
+                            <div class="form-group"><label>פריט</label><select class="req-item-select"><option value="">בחר פריט...</option></select></div>
+                            <div class="form-group"><label>כמות</label><input type="number" class="req-item-quantity" min="1" value="1"></div>
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary" onclick="addRequestItemRow()" style="margin-bottom:20px;">+ הוסף פריט</button>
+                    <div class="form-group" style="margin-bottom:20px;">
+                        <label>הערות</label>
+                        <textarea id="reqNotes" rows="3" placeholder="הערות נוספות..."></textarea>
+                    </div>
+                    <button class="btn btn-primary" onclick="submitShavagRequest()">שלח בקשה</button>
+                    <button class="btn" style="background:#cbd5e0;color:#2d3748;margin-right:10px;" onclick="hideShavagRequestForm()">ביטול</button>
+                </div>
+            </div>
+            <h2 style="margin-bottom:20px;">בקשות ציוד <span id="requestsCount" style="color:#667eea;"></span></h2>
+            <div class="filters" style="margin-bottom:20px;">
+                <select id="requestStatusFilter" onchange="renderShavagRequests()">
+                    <option value="">כל הסטטוסים</option>
+                    <option value="pending">ממתין לאישור</option>
+                    <option value="approved">אושר</option>
+                    <option value="rejected">נדחה</option>
+                </select>
+                <select id="requestUserFilter" onchange="renderShavagRequests()">
+                    <option value="">כל המשתמשים</option>
+                </select>
+            </div>
+            <div id="shavagRequestsContainer"></div>
+        </div>
+
+        <!-- Add Item -->
+        <div id="add" class="tab-content">
+            <h2 style="margin-bottom:20px;">הוספת פריט חדש למחסן</h2>
+            <div class="image-upload-area" id="imageUploadArea" onclick="document.getElementById('itemImageInput').click()">
+                <input type="file" id="itemImageInput" accept="image/*" style="display:none;" onchange="handleImageUpload(event)">
+                <div id="imageUploadPlaceholder">
+                    <div style="font-size:3em;margin-bottom:10px;">📷</div>
+                    <div style="font-size:1.2em;font-weight:bold;color:#4a5568;">לחץ להעלאת תמונה</div>
+                    <div style="color:#a0aec0;margin-top:5px;">אופציונלי</div>
+                </div>
+                <img id="imagePreview" class="preview-image" style="display:none;">
+            </div>
+            <div class="form-grid">
+                <div class="form-group"><label>שם הפריט *</label><input type="text" id="itemName" placeholder="לדוגמה: פטיש"></div>
+                <div class="form-group"><label>קטגוריה *</label>
+                    <select id="itemCategory">
+                        <option value="בנייה מחנאית">בנייה מחנאית</option>
+                        <option value="ציוד משרדי">ציוד משרדי</option>
+                        <option value="ציוד כבד">ציוד כבד</option>
+                        <option value="ציוד בישול">ציוד בישול</option>
+                        <option value="חשמל ואלקטרוניקה">חשמל ואלקטרוניקה</option>
+                        <option value="אינסטלציה">אינסטלציה</option>
+                        <option value="כלים">כלים</option>
+                        <option value="אחר">אחר</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>מחסן *</label>
+                    <select id="itemWarehouse">
+                        <option value="מחסן ראשי">מחסן ראשי</option>
+                        <option value="מחסן בנייה">מחסן בנייה</option>
+                        <option value="מחסן מטבח">מחסן מטבח</option>
+                        <option value="מחסן חשמל">מחסן חשמל</option>
+                    </select>
+                </div>
+                <div class="form-group"><label>כמות במלאי *</label><input type="number" id="itemQuantity" min="0" value="0"></div>
+                <div class="form-group"><label>כמות מינימלית</label><input type="number" id="itemMinQuantity" min="0" value="5"></div>
+                <div class="form-group"><label>יחידת מידה</label><input type="text" id="itemUnit" placeholder="יחידות, ק״ג, מטר..."></div>
+            </div>
+            <div class="custom-fields">
+                <h3 style="margin-bottom:15px;">שדות מותאמים אישית (אופציונלי)</h3>
+                <p style="color:#718096;margin-bottom:15px;">למשל: אורך לסנדות, צבע, גודל...</p>
+                <div id="customFieldsContainer"></div>
+                <button class="btn btn-secondary" onclick="addCustomField()" style="margin-top:10px;">+ הוסף שדה</button>
+            </div>
+            <div class="form-group" style="margin-bottom:20px;">
+                <label>הערות</label>
+                <textarea id="itemNotes" rows="3" placeholder="הערות נוספות..."></textarea>
+            </div>
+            <button class="btn btn-primary" onclick="addItem()">➕ הוסף פריט למחסן</button>
+        </div>
+
+        <!-- Standards -->
+        <div id="standards" class="tab-content">
+            <h2 style="margin-bottom:20px;">תקני מלאי - כמויות רצויות</h2>
+            <div class="alert alert-info">💡 הגדר כמות מלאי רצויה לכל פריט.</div>
+            <div class="quick-actions">
+                <button class="btn btn-secondary quick-action" onclick="exportStandardsOrderToExcel()">📊 ייצוא הזמנת השלמה (Excel)</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>פריט</th><th>קטגוריה</th><th>מחסן</th>
+                        <th>מלאי נוכחי</th><th>תקן רצוי</th><th>חסר להזמנה</th><th>פעולות</th>
+                    </tr>
+                </thead>
+                <tbody id="standardsTableBody"></tbody>
+            </table>
+        </div>
+
+        <!-- Users -->
+        <div id="users" class="tab-content">
+            <h2 style="margin-bottom:20px;">ניהול משתמשים והעץ הארגוני</h2>
+            <div class="alert alert-info">🌳 משתמשים מאורגנים בעץ היררכי. כל משתמש רואה את הבקשות של עצמו ושל מי שמתחתיו.</div>
+            <div class="quick-actions">
+                <button class="btn btn-primary quick-action" onclick="showAddUserForm()">+ הוסף משתמש</button>
+            </div>
+            <div id="addUserFormContainer" style="display:none;margin-bottom:30px;">
+                <h3 style="margin-bottom:20px;">הוספת משתמש חדש</h3>
+                <div class="form-grid">
+                    <div class="form-group"><label>אימייל</label><input type="email" id="newUsername" placeholder="user@email.com"></div>
+                    <div class="form-group"><label>סיסמה</label><input type="password" id="newPassword" placeholder="סיסמה (לפחות 6 תווים)"></div>
+                    <div class="form-group"><label>שם מלא</label><input type="text" id="newFullName" placeholder="שם מלא"></div>
+                    <div class="form-group"><label>תפקיד במערכת</label>
+                        <select id="newUserRole">
+                            <option value="shavag">שכב"ג</option>
+                            <option value="warehouse">ראש מחסן</option>
+                            <option value="admin">מנהל</option>
+                        </select>
+                    </div>
+                    <div class="form-group"><label>תפקיד בעץ הארגוני</label><select id="newUserPosition"></select></div>
+                    <div class="form-group"><label>משתמש אב (ממונה)</label>
+                        <select id="newUserParent"><option value="">אין - ברמה העליונה</option></select>
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="addUser()">הוסף משתמש</button>
+                <button class="btn" style="background:#cbd5e0;color:#2d3748;margin-right:10px;" onclick="hideAddUserForm()">ביטול</button>
+            </div>
+            <h3 style="margin:30px 0 20px 0;">העץ הארגוני</h3>
+            <div id="orgTreeContainer" class="org-tree"></div>
+        </div>
+
+        <!-- Roles -->
+        <div id="roles" class="tab-content">
+            <h2 style="margin-bottom:20px;">ניהול תפקידים ומעמדות</h2>
+            <div class="alert alert-info">🏷️ הגדר תפקידים ומעמדות בעץ הארגוני.</div>
+            <div class="quick-actions">
+                <button class="btn btn-primary quick-action" onclick="showAddRoleForm()">+ הוסף תפקיד</button>
+            </div>
+            <div id="addRoleFormContainer" style="display:none;margin-bottom:30px;">
+                <h3 style="margin-bottom:20px;">הוספת תפקיד חדש</h3>
+                <div class="form-grid">
+                    <div class="form-group"><label>שם התפקיד</label><input type="text" id="newRoleName" placeholder="לדוגמה: רכז שכבות"></div>
+                    <div class="form-group"><label>הרשאות</label>
+                        <select id="newRolePermissions">
+                            <option value="shavag">שכב"ג - רק צפייה ובקשות</option>
+                            <option value="warehouse">ראש מחסן - ניהול מלאי והזמנות</option>
+                            <option value="admin">מנהל - הרשאות מלאות</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="addRole()">הוסף תפקיד</button>
+                <button class="btn" style="background:#cbd5e0;color:#2d3748;margin-right:10px;" onclick="hideAddRoleForm()">ביטול</button>
+            </div>
+            <h3 style="margin:30px 0 20px 0;">רשימת תפקידים</h3>
+            <div id="rolesContainer" class="items-grid"></div>
+        </div>
+
+        <!-- Reports -->
+        <div id="reports" class="tab-content">
+            <h2 style="margin-bottom:20px;">סטטיסטיקות ודוחות</h2>
+            <div class="stats-grid" id="statsContainer"></div>
+            <h3 style="margin:30px 0 20px 0;">פריטים עם מלאי נמוך</h3>
+            <div id="lowStockContainer"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════
+     MAIN SCRIPT
+════════════════════════════════════════════════════════ -->
+<script>
+// ──────────────────────────────────────────────
+// State
+// ──────────────────────────────────────────────
+let items          = [];
+let orders         = [];
+let shavagRequests = [];
+let users          = [];
+let customRoles    = [];
+let inventoryStandards = {};
+let currentUser    = null;
+let currentItemImage = null;
+let editingUserId  = null;
+
+// Firestore unsubscribe handles
+let _unsubItems    = null;
+let _unsubOrders   = null;
+let _unsubRequests = null;
+let _unsubUsers    = null;
+let _unsubRoles    = null;
+let _unsubStandards= null;
+
+// ──────────────────────────────────────────────
+// Toast helper
+// ──────────────────────────────────────────────
+function toast(msg, type = 'success') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = `show ${type}`;
+    clearTimeout(el._timer);
+    el._timer = setTimeout(() => { el.className = ''; }, 3000);
+}
+
+// ──────────────────────────────────────────────
+// Loading overlay
+// ──────────────────────────────────────────────
+function showLoading()  { document.getElementById('loadingOverlay').style.display = 'flex'; }
+function hideLoading()  { document.getElementById('loadingOverlay').style.display = 'none'; }
+
+// ──────────────────────────────────────────────
+// Init (called after Firebase module loads)
+// ──────────────────────────────────────────────
+function initApp() {
+    const { auth, onAuthStateChanged } = window._fb;
+
+    onAuthStateChanged(auth, async (firebaseUser) => {
+        if (firebaseUser) {
+            // Load user profile from Firestore
+            const { db, doc, getDoc } = window._fb;
+            const snap = await getDoc(doc(db, 'users', firebaseUser.uid));
+
+            if (snap.exists()) {
+                currentUser = { id: firebaseUser.uid, ...snap.data() };
+                document.getElementById('loginScreen').style.display  = 'none';
+                document.getElementById('mainApp').style.display      = 'block';
+                subscribeAll();
+                updateUIPermissions();
+            } else {
+                // Profile not in Firestore yet (first admin setup)
+                currentUser = {
+                    id: firebaseUser.uid,
+                    email: firebaseUser.email,
+                    fullName: 'מנהל המערכת',
+                    role: 'admin',
+                    position: 'מנהל',
+                    parentId: null
+                };
+                await saveUserProfile(currentUser);
+                document.getElementById('loginScreen').style.display  = 'none';
+                document.getElementById('mainApp').style.display      = 'block';
+                subscribeAll();
+                updateUIPermissions();
+            }
+        } else {
+            currentUser = null;
+            unsubscribeAll();
+            document.getElementById('loginScreen').style.display  = 'flex';
+            document.getElementById('mainApp').style.display      = 'none';
+        }
+        hideLoading();
+    });
+}
+
+// ──────────────────────────────────────────────
+// Firestore helpers
+// ──────────────────────────────────────────────
+async function saveUserProfile(user) {
+    const { db, doc, setDoc } = window._fb;
+    const { id, ...data } = user;
+    await setDoc(doc(db, 'users', id), data, { merge: true });
+}
+
+// ──────────────────────────────────────────────
+// Real-time subscriptions
+// ──────────────────────────────────────────────
+function subscribeAll() {
+    const { db, collection, onSnapshot, doc } = window._fb;
+
+    _unsubItems = onSnapshot(collection(db, 'items'), snap => {
+        items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        renderItems(); renderStandards(); renderStats(); updateRequestItemSelects();
+    });
+
+    _unsubOrders = onSnapshot(collection(db, 'orders'), snap => {
+        orders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        renderOrders();
+    });
+
+    _unsubRequests = onSnapshot(collection(db, 'shavagRequests'), snap => {
+        shavagRequests = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        renderShavagRequests(); renderStats();
+    });
+
+    _unsubUsers = onSnapshot(collection(db, 'users'), snap => {
+        users = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        renderUsers(); updatePositionSelects(); updateParentUserSelect(); updateRequestUserFilter();
+    });
+
+    _unsubRoles = onSnapshot(collection(db, 'roles'), snap => {
+        customRoles = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        if (customRoles.length === 0) initDefaultRoles();
+        renderRoles(); updatePositionSelects();
+    });
+
+    _unsubStandards = onSnapshot(doc(db, 'meta', 'standards'), snap => {
+        if (snap.exists()) inventoryStandards = snap.data();
+        renderStandards();
+    });
+}
+
+function unsubscribeAll() {
+    [_unsubItems,_unsubOrders,_unsubRequests,_unsubUsers,_unsubRoles,_unsubStandards]
+        .forEach(fn => fn && fn());
+}
+
+// ──────────────────────────────────────────────
+// Auth
+// ──────────────────────────────────────────────
+async function doLogin() {
+    const email    = document.getElementById('loginEmail').value.trim();
+    const password = document.getElementById('loginPassword').value;
+    if (!email || !password) { toast('נא למלא אימייל וסיסמה', 'error'); return; }
+
+    showLoading();
+    try {
+        const { auth, signInWithEmailAndPassword } = window._fb;
+        await signInWithEmailAndPassword(auth, email, password);
+        // onAuthStateChanged will handle the rest
+    } catch (e) {
+        hideLoading();
+        toast('שם משתמש או סיסמה שגויים ❌', 'error');
+    }
+}
+
+async function doLogout() {
+    if (!confirm('האם אתה בטוח שברצונך להתנתק?')) return;
+    const { auth, signOut } = window._fb;
+    await signOut(auth);
+}
+
+// ──────────────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────────────
+function getUserPath(userId) {
+    const path = [];
+    let cur = userId;
+    while (cur) {
+        const u = users.find(x => x.id === cur);
+        if (!u) break;
+        path.unshift(u.position || u.fullName);
+        cur = u.parentId;
+    }
+    return path.join(' > ');
+}
+
+function getSubordinateIds(userId) {
+    const list = [userId];
+    users.filter(u => u.parentId === userId).forEach(c => list.push(...getSubordinateIds(c.id)));
+    return list;
+}
+
+// ──────────────────────────────────────────────
+// UI Permissions
+// ──────────────────────────────────────────────
+function updateUIPermissions() {
+    if (!currentUser) return;
+    document.getElementById('currentUserName').textContent = currentUser.fullName;
+    document.getElementById('currentUserPosition').textContent = currentUser.position || '';
+    const roleNames = { admin:'מנהל מערכת', warehouse:'ראש מחסן', shavag:'שכב"ג' };
+    document.getElementById('currentUserRole').textContent = roleNames[currentUser.role];
+
+    const show = id => document.getElementById(id)?.classList.remove('hidden');
+    const hide = id => document.getElementById(id)?.classList.add('hidden');
+    const btnNew    = document.getElementById('btnNewRequest');
+    const btnExport = document.getElementById('btnExportRequests');
+
+    if (currentUser.role === 'shavag') {
+        ['tabOrders','tabAdd','tabStandards','tabUsers','tabRoles'].forEach(hide);
+        if (btnNew)    btnNew.style.display = 'block';
+        if (btnExport) btnExport.classList.add('hidden');
+    } else if (currentUser.role === 'warehouse') {
+        ['tabOrders','tabAdd','tabStandards'].forEach(show);
+        ['tabUsers','tabRoles'].forEach(hide);
+        if (btnNew)    btnNew.style.display = 'none';
+        if (btnExport) btnExport.classList.remove('hidden');
+    } else {
+        ['tabOrders','tabAdd','tabStandards','tabUsers','tabRoles'].forEach(show);
+        if (btnNew)    btnNew.style.display = 'none';
+        if (btnExport) btnExport.classList.remove('hidden');
+    }
+}
+
+// ──────────────────────────────────────────────
+// Tabs
+// ──────────────────────────────────────────────
+function switchTab(tabName, event) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    if (event) event.target.classList.add('active');
+    document.getElementById(tabName).classList.add('active');
+}
+
+// ──────────────────────────────────────────────
+// Image upload
+// ──────────────────────────────────────────────
+function handleImageUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { toast('הקובץ גדול מדי (מקס 2MB)', 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+        currentItemImage = e.target.result;
+        const preview = document.getElementById('imagePreview');
+        preview.src = currentItemImage; preview.style.display = 'block';
+        document.getElementById('imageUploadPlaceholder').style.display = 'none';
+        document.getElementById('imageUploadArea').classList.add('has-image');
+    };
+    reader.readAsDataURL(file);
+}
+
+// ──────────────────────────────────────────────
+// Custom fields
+// ──────────────────────────────────────────────
+function addCustomField() {
+    const container = document.getElementById('customFieldsContainer');
+    const id = Date.now();
+    const row = document.createElement('div');
+    row.className = 'custom-field-row'; row.id = `cf_${id}`;
+    row.innerHTML = `
+        <input type="text"  placeholder="שם השדה"  class="custom-field-name">
+        <input type="text"  placeholder="ערך"       class="custom-field-value">
+        <button class="btn btn-danger" onclick="document.getElementById('cf_${id}').remove()" style="padding:10px 20px;">🗑️</button>
+    `;
+    container.appendChild(row);
+}
+
+function getCustomFieldsData() {
+    const fields = {};
+    document.querySelectorAll('.custom-field-row').forEach(row => {
+        const n = row.querySelector('.custom-field-name').value.trim();
+        const v = row.querySelector('.custom-field-value').value.trim();
+        if (n && v) fields[n] = v;
+    });
+    return fields;
+}
+
+// ──────────────────────────────────────────────
+// Items
+// ──────────────────────────────────────────────
+async function addItem() {
+    const name        = document.getElementById('itemName').value.trim();
+    const category    = document.getElementById('itemCategory').value;
+    const warehouse   = document.getElementById('itemWarehouse').value;
+    const quantity    = parseInt(document.getElementById('itemQuantity').value);
+    const minQuantity = parseInt(document.getElementById('itemMinQuantity').value);
+    const unit        = document.getElementById('itemUnit').value.trim() || 'יחידות';
+    const notes       = document.getElementById('itemNotes').value.trim();
+    const customFields= getCustomFieldsData();
+
+    if (!name) { toast('נא להזין שם לפריט', 'error'); return; }
+
+    showLoading();
+    try {
+        const { db, collection, doc, setDoc } = window._fb;
+        const newDoc = doc(collection(db, 'items'));
+        await setDoc(newDoc, { name, category, warehouse, quantity, minQuantity, unit, notes,
+                               image: currentItemImage || null, customFields,
+                               createdBy: currentUser.id, createdAt: Date.now() });
+
+        // Reset form
+        ['itemName','itemUnit','itemNotes'].forEach(id => document.getElementById(id).value = '');
+        document.getElementById('itemQuantity').value    = '0';
+        document.getElementById('itemMinQuantity').value = '5';
+        document.getElementById('customFieldsContainer').innerHTML = '';
+        currentItemImage = null;
+        document.getElementById('imagePreview').style.display       = 'none';
+        document.getElementById('imageUploadPlaceholder').style.display = 'block';
+        document.getElementById('imageUploadArea').classList.remove('has-image');
+
+        toast('הפריט נוסף בהצלחה! ✅');
+        switchTab('inventory', null);
+    } catch(e) { toast('שגיאה בהוספת פריט', 'error'); console.error(e); }
+    hideLoading();
+}
+
+function renderItems() {
+    if (!currentUser) return;
+    const container   = document.getElementById('itemsContainer');
+    const searchTerm  = (document.getElementById('searchInput')?.value || '').toLowerCase();
+    const whFilter    = document.getElementById('warehouseFilter')?.value || '';
+    const catFilter   = document.getElementById('categoryFilter')?.value || '';
+    const stockFilter = document.getElementById('stockFilter')?.value || '';
+
+    let filtered = items.filter(item => {
+        const matchS  = item.name.toLowerCase().includes(searchTerm) || item.category.toLowerCase().includes(searchTerm);
+        const matchW  = !whFilter  || item.warehouse === whFilter;
+        const matchC  = !catFilter || item.category  === catFilter;
+        let   matchSt = true;
+        if (stockFilter === 'low')      matchSt = item.quantity <= item.minQuantity && item.quantity > 0;
+        else if (stockFilter === 'critical') matchSt = item.quantity === 0;
+        else if (stockFilter === 'good')     matchSt = item.quantity > item.minQuantity;
+        return matchS && matchW && matchC && matchSt;
+    });
+
+    if (!filtered.length) {
+        container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-text">לא נמצאו פריטים</div></div>`;
+        return;
+    }
+
+    const canEdit = currentUser.role === 'admin' || currentUser.role === 'warehouse';
+    container.innerHTML = filtered.map(item => {
+        const isCritical = item.quantity === 0;
+        const isLow      = item.quantity <= item.minQuantity && item.quantity > 0;
+        const sc = isCritical ? 'stock-critical' : (isLow ? 'stock-low' : 'stock-good');
+        const st = isCritical ? '🚨 אזל המלאי!'  : (isLow ? '⚠️ מלאי נמוך' : '✅ מלאי תקין');
+        const cfHTML = item.customFields ? Object.entries(item.customFields).map(([k,v]) =>
+            `<div class="item-detail"><span class="detail-label">${k}:</span><span class="detail-value">${v}</span></div>`).join('') : '';
+        return `
+            <div class="item-card">
+                ${item.image ? `<img src="${item.image}" class="item-image" alt="${item.name}">` : `<div class="item-image-placeholder">📦</div>`}
+                <div class="item-header">
+                    <div class="item-name">${item.name}</div>
+                    <div class="item-category">${item.category}</div>
+                </div>
+                <div class="item-details">
+                    <div class="item-detail"><span class="detail-label">מחסן:</span><span class="detail-value">${item.warehouse}</span></div>
+                    <div class="item-detail"><span class="detail-label">כמות:</span><span class="detail-value">${item.quantity} ${item.unit}</span></div>
+                    <div class="item-detail"><span class="detail-label">מינימום:</span><span class="detail-value">${item.minQuantity} ${item.unit}</span></div>
+                    ${cfHTML}
+                    ${item.notes ? `<div class="item-detail"><span class="detail-label">הערות:</span><span class="detail-value">${item.notes}</span></div>` : ''}
+                </div>
+                <div class="stock-status ${sc}">${st}</div>
+                ${canEdit ? `<div class="item-actions">
+                    <button class="btn btn-secondary" onclick="updateQuantity('${item.id}',1)">+</button>
+                    <button class="btn btn-secondary" onclick="updateQuantity('${item.id}',-1)">-</button>
+                    <button class="btn btn-danger"    onclick="deleteItem('${item.id}')">🗑️</button>
+                </div>` : ''}
+            </div>`;
+    }).join('');
+}
+
+function filterItems() { renderItems(); }
+
+async function updateQuantity(id, change) {
+    const item = items.find(i => i.id === id);
+    if (!item) return;
+    const newQ = item.quantity + change;
+    if (newQ < 0) { toast('לא ניתן להוריד כמות שלילית', 'error'); return; }
+    const { db, doc, updateDoc } = window._fb;
+    await updateDoc(doc(db, 'items', id), { quantity: newQ });
+}
+
+async function deleteItem(id) {
+    if (!confirm('האם אתה בטוח שברצונך למחוק פריט זה?')) return;
+    const { db, doc, deleteDoc } = window._fb;
+    await deleteDoc(doc(db, 'items', id));
+    toast('הפריט נמחק ✅');
+}
+
+// ──────────────────────────────────────────────
+// Orders
+// ──────────────────────────────────────────────
+function showOrderForm()  { document.getElementById('orderFormContainer').style.display = 'block'; }
+function hideOrderForm()  {
+    document.getElementById('orderFormContainer').style.display = 'none';
+    ['orderItemName','orderNotes'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('orderQuantity').value = '1';
+}
+
+async function submitOrder() {
+    const itemName = document.getElementById('orderItemName').value.trim();
+    if (!itemName) { toast('נא להזין שם לפריט', 'error'); return; }
+
+    const { db, collection, doc, setDoc } = window._fb;
+    const newDoc = doc(collection(db, 'orders'));
+    await setDoc(newDoc, {
+        itemName,
+        quantity: parseInt(document.getElementById('orderQuantity').value),
+        category: document.getElementById('orderCategory').value,
+        warehouse: document.getElementById('orderWarehouse').value,
+        notes: document.getElementById('orderNotes').value.trim(),
+        status: 'pending',
+        date: new Date().toLocaleDateString('he-IL'),
+        createdBy: currentUser.id,
+        createdByName: currentUser.fullName
+    });
+    hideOrderForm(); toast('ההזמנה נשלחה! ✅');
+}
+
+function renderOrders() {
+    if (!currentUser) return;
+    const container = document.getElementById('ordersContainer');
+    const subIds = getSubordinateIds(currentUser.id);
+    const visible = orders.filter(o => subIds.includes(o.createdBy));
+
+    if (!visible.length) {
+        container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-text">אין הזמנות פעילות</div></div>`;
+        return;
+    }
+    const statusText = { pending:'ממתין לאישור', approved:'אושר', received:'התקבל' };
+    const canApprove = currentUser.role === 'admin';
+    container.innerHTML = visible.map(order => `
+        <div class="order-card">
+            <div class="order-header">
+                <div>
+                    <strong style="font-size:1.2em;">${order.itemName}</strong>
+                    <div style="color:#718096;margin-top:5px;">תאריך: ${order.date}</div>
+                    <div style="color:#718096;margin-top:5px;">נוצר ע"י: ${order.createdByName||'לא ידוע'}</div>
+                </div>
+                <div class="order-status status-${order.status}">${statusText[order.status]||order.status}</div>
+            </div>
+            <div class="item-details">
+                <div class="item-detail"><span class="detail-label">כמות:</span><span class="detail-value">${order.quantity}</span></div>
+                <div class="item-detail"><span class="detail-label">קטגוריה:</span><span class="detail-value">${order.category}</span></div>
+                <div class="item-detail"><span class="detail-label">מחסן יעד:</span><span class="detail-value">${order.warehouse}</span></div>
+                ${order.notes ? `<div class="item-detail"><span class="detail-label">הערות:</span><span class="detail-value">${order.notes}</span></div>` : ''}
+            </div>
+            <div class="item-actions">
+                ${order.status==='pending'&&canApprove ? `<button class="btn btn-primary" onclick="updateOrderStatus('${order.id}','approved')">✓ אשר</button>` : ''}
+                ${order.status==='approved' ? `<button class="btn btn-secondary" onclick="receiveOrder('${order.id}')">📦 התקבל</button>` : ''}
+                <button class="btn btn-danger" onclick="deleteOrder('${order.id}')">🗑️</button>
+            </div>
+        </div>`).join('');
+}
+
+async function updateOrderStatus(id, status) {
+    const { db, doc, updateDoc } = window._fb;
+    await updateDoc(doc(db, 'orders', id), { status });
+}
+
+async function receiveOrder(id) {
+    const order = orders.find(o => o.id === id);
+    if (!order) return;
+    const { db, collection, doc, setDoc, updateDoc } = window._fb;
+
+    const existing = items.find(i => i.name.toLowerCase() === order.itemName.toLowerCase() && i.warehouse === order.warehouse);
+    if (existing) {
+        await updateDoc(doc(db, 'items', existing.id), { quantity: existing.quantity + order.quantity });
+    } else {
+        const newDoc = doc(collection(db, 'items'));
+        await setDoc(newDoc, { name: order.itemName, category: order.category, warehouse: order.warehouse,
+                               quantity: order.quantity, minQuantity: 5, unit: 'יחידות',
+                               notes: order.notes || '', createdBy: currentUser.id });
+    }
+    await updateDoc(doc(db, 'orders', id), { status: 'received' });
+    toast('ההזמנה סומנה כהתקבלה והמלאי עודכן! ✅');
+}
+
+async function deleteOrder(id) {
+    if (!confirm('למחוק הזמנה זו?')) return;
+    const { db, doc, deleteDoc } = window._fb;
+    await deleteDoc(doc(db, 'orders', id));
+    toast('ההזמנה נמחקה ✅');
+}
+
+function exportOrdersToExcel() {
+    const subIds = getSubordinateIds(currentUser.id);
+    const data = orders.filter(o => subIds.includes(o.createdBy) && (o.status==='pending'||o.status==='approved'))
+        .map(o => ({ 'פריט':o.itemName,'כמות':o.quantity,'קטגוריה':o.category,'מחסן יעד':o.warehouse,'סטטוס':o.status==='pending'?'ממתין':'אושר','תאריך':o.date,'נוצר ע"י':o.createdByName,'הערות':o.notes||'' }));
+    if (!data.length) { toast('אין הזמנות לייצוא', 'error'); return; }
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'הזמנות');
+    XLSX.writeFile(wb, `הזמנות_ציוד_${new Date().toLocaleDateString('he-IL').replace(/\//g,'-')}.xlsx`);
+    toast('הקובץ יוצא ✅');
+}
+
+// ──────────────────────────────────────────────
+// Shavag Requests
+// ──────────────────────────────────────────────
+function showShavagRequestForm() {
+    document.getElementById('shavagRequestFormContainer').style.display = 'block';
+    updateRequestItemSelects();
+}
+function hideShavagRequestForm() {
+    document.getElementById('shavagRequestFormContainer').style.display = 'none';
+    ['reqActivityName','reqDate','reqNotes'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('requestItemsContainer').innerHTML = `
+        <div class="form-grid request-item-row">
+            <div class="form-group"><label>פריט</label><select class="req-item-select"><option value="">בחר פריט...</option></select></div>
+            <div class="form-group"><label>כמות</label><input type="number" class="req-item-quantity" min="1" value="1"></div>
+        </div>`;
+    updateRequestItemSelects();
+}
+
+function updateRequestItemSelects() {
+    const opts = '<option value="">בחר פריט...</option>' + items.map(item => {
+        const cf = item.customFields && Object.keys(item.customFields).length
+            ? ' - ' + Object.entries(item.customFields).map(([k,v]) => `${k}:${v}`).join(', ') : '';
+        return `<option value="${item.id}">${item.name}${cf} (${item.warehouse})</option>`;
+    }).join('');
+    document.querySelectorAll('.req-item-select').forEach(s => { const v=s.value; s.innerHTML=opts; s.value=v; });
+}
+
+function addRequestItemRow() {
+    const row = document.createElement('div');
+    row.className = 'form-grid request-item-row';
+    row.innerHTML = `
+        <div class="form-group"><label>פריט</label><select class="req-item-select"><option value="">בחר פריט...</option></select></div>
+        <div class="form-group"><label>כמות</label><input type="number" class="req-item-quantity" min="1" value="1"></div>`;
+    document.getElementById('requestItemsContainer').appendChild(row);
+    updateRequestItemSelects();
+}
+
+async function submitShavagRequest() {
+    const activityName = document.getElementById('reqActivityName').value.trim();
+    const date         = document.getElementById('reqDate').value;
+    if (!activityName || !date) { toast('נא למלא שם פעולה ותאריך', 'error'); return; }
+
+    const requestedItems = [];
+    document.querySelectorAll('.request-item-row').forEach(row => {
+        const itemId   = row.querySelector('.req-item-select').value;
+        const quantity = parseInt(row.querySelector('.req-item-quantity').value);
+        if (itemId && quantity > 0) {
+            const item = items.find(i => i.id === itemId);
+            if (item) requestedItems.push({ itemId: item.id, itemName: item.name, quantity, warehouse: item.warehouse });
+        }
+    });
+    if (!requestedItems.length) { toast('נא לבחור לפחות פריט אחד', 'error'); return; }
+
+    const { db, collection, doc, setDoc } = window._fb;
+    const newDoc = doc(collection(db, 'shavagRequests'));
+    await setDoc(newDoc, {
+        activityName, date,
+        startTime: document.getElementById('reqStartTime').value,
+        endTime:   document.getElementById('reqEndTime').value,
+        items: requestedItems,
+        notes: document.getElementById('reqNotes').value.trim(),
+        status: 'pending',
+        createdBy: currentUser.id,
+        createdByName: currentUser.fullName,
+        createdByPosition: currentUser.position || currentUser.fullName,
+        createdDate: new Date().toLocaleDateString('he-IL')
+    });
+    hideShavagRequestForm(); toast('הבקשה נשלחה! ✅');
+}
+
+function updateRequestUserFilter() {
+    const sel = document.getElementById('requestUserFilter');
+    if (!sel || !currentUser) return;
+    const subIds = getSubordinateIds(currentUser.id);
+    const vis    = users.filter(u => subIds.includes(u.id) && u.role === 'shavag');
+    sel.innerHTML = '<option value="">כל המשתמשים</option>' +
+        vis.map(u => `<option value="${u.id}">${u.fullName} (${u.position||'שכב"ג'})</option>`).join('');
+}
+
+function renderShavagRequests() {
+    if (!currentUser) return;
+    const container    = document.getElementById('shavagRequestsContainer');
+    const statusFilter = document.getElementById('requestStatusFilter')?.value || '';
+    const userFilter   = document.getElementById('requestUserFilter')?.value   || '';
+
+    let filtered = (currentUser.role==='admin'||currentUser.role==='warehouse')
+        ? shavagRequests
+        : shavagRequests.filter(r => r.createdBy === currentUser.id);
+    if (statusFilter) filtered = filtered.filter(r => r.status === statusFilter);
+    if (userFilter)   filtered = filtered.filter(r => r.createdBy === userFilter);
+    filtered.sort((a,b) => new Date(b.date) - new Date(a.date));
+
+    const cnt = document.getElementById('requestsCount');
+    if (cnt) cnt.textContent = `(${filtered.length})`;
+
+    if (!filtered.length) {
+        container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📅</div><div class="empty-state-text">אין בקשות</div></div>`;
+        return;
+    }
+    const statusText = { pending:'ממתין לאישור', approved:'אושר', rejected:'נדחה' };
+    const canApprove = currentUser.role==='admin' || currentUser.role==='warehouse';
+    container.innerHTML = filtered.map(req => `
+        <div class="request-card">
+            <div class="order-header">
+                <div>
+                    <strong style="font-size:1.3em;">${req.activityName}</strong>
+                    <div style="color:#718096;margin-top:5px;">📅 ${new Date(req.date).toLocaleDateString('he-IL')} | ⏰ ${req.startTime} - ${req.endTime}</div>
+                    <div style="color:#718096;margin-top:5px;">נוצר ע"י: ${req.createdByName} (${req.createdByPosition||'שכב"ג'})</div>
+                </div>
+                <div class="order-status status-${req.status}">${statusText[req.status]}</div>
+            </div>
+            <h4 style="margin:15px 0 10px 0;">פריטי ציוד:</h4>
+            <div class="item-details">
+                ${req.items.map(i=>`<div class="item-detail"><span class="detail-label">${i.itemName}:</span><span class="detail-value">${i.quantity} יח׳ (${i.warehouse})</span></div>`).join('')}
+            </div>
+            ${req.notes ? `<div style="margin-top:15px;padding:10px;background:#f7fafc;border-radius:8px;"><strong>הערות:</strong> ${req.notes}</div>` : ''}
+            ${canApprove && req.status==='pending' ? `
+                <div class="item-actions" style="margin-top:15px;">
+                    <button class="btn btn-primary" onclick="approveShavagRequest('${req.id}')">✓ אשר</button>
+                    <button class="btn btn-danger"  onclick="rejectShavagRequest('${req.id}')">✗ דחה</button>
+                </div>` : ''}
+        </div>`).join('');
+}
+
+async function approveShavagRequest(id) {
+    const { db, doc, updateDoc } = window._fb;
+    await updateDoc(doc(db,'shavagRequests',id), { status:'approved', approvedBy:currentUser.fullName, approvedDate:new Date().toLocaleDateString('he-IL') });
+    toast('הבקשה אושרה! ✅');
+}
+async function rejectShavagRequest(id) {
+    if (!confirm('לדחות בקשה זו?')) return;
+    const { db, doc, updateDoc } = window._fb;
+    await updateDoc(doc(db,'shavagRequests',id), { status:'rejected', rejectedBy:currentUser.fullName, rejectedDate:new Date().toLocaleDateString('he-IL') });
+    toast('הבקשה נדחתה');
+}
+
+function exportShavagRequestsToExcel() {
+    let filtered = (currentUser.role==='admin'||currentUser.role==='warehouse') ? shavagRequests : shavagRequests.filter(r=>r.createdBy===currentUser.id);
+    if (!filtered.length) { toast('אין בקשות לייצוא','error'); return; }
+    const data = filtered.map(r => ({ 'שם הפעולה':r.activityName,'תאריך':new Date(r.date).toLocaleDateString('he-IL'),'שעה':`${r.startTime}-${r.endTime}`,'נוצר ע"י':r.createdByName,'תפקיד':r.createdByPosition||'שכב"ג','סטטוס':r.status==='pending'?'ממתין':r.status==='approved'?'אושר':'נדחה','פריטים':r.items.map(i=>`${i.itemName}(${i.quantity})`).join(', '),'הערות':r.notes||'' }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'בקשות');
+    XLSX.writeFile(wb, `בקשות_ציוד_${new Date().toLocaleDateString('he-IL').replace(/\//g,'-')}.xlsx`);
+    toast('הקובץ יוצא ✅');
+}
+
+// ──────────────────────────────────────────────
+// Standards
+// ──────────────────────────────────────────────
+function renderStandards() {
+    const tbody = document.getElementById('standardsTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = items.map(item => {
+        const std      = inventoryStandards[item.id] || 0;
+        const shortage = Math.max(0, std - item.quantity);
+        return `<tr>
+            <td>${item.name}</td><td>${item.category}</td><td>${item.warehouse}</td>
+            <td>${item.quantity} ${item.unit}</td>
+            <td><input type="number" value="${std}" min="0" style="width:100px;padding:5px;" onchange="updateStandard('${item.id}',this.value)"></td>
+            <td style="font-weight:bold;color:${shortage>0?'#f56565':'#48bb78'};">${shortage>0?shortage+' '+item.unit:'-'}</td>
+            <td><button class="btn btn-secondary" style="padding:8px 16px;font-size:0.9em;" onclick="quickSetStandard('${item.id}',${item.quantity})">קבע כנוכחי</button></td>
+        </tr>`;
+    }).join('');
+}
+
+async function updateStandard(itemId, value) {
+    inventoryStandards[itemId] = parseInt(value) || 0;
+    const { db, doc, setDoc } = window._fb;
+    await setDoc(doc(db,'meta','standards'), inventoryStandards);
+}
+async function quickSetStandard(itemId, qty) {
+    inventoryStandards[itemId] = qty;
+    const { db, doc, setDoc } = window._fb;
+    await setDoc(doc(db,'meta','standards'), inventoryStandards);
+    toast('תקן עודכן ✅');
+}
+
+function exportStandardsOrderToExcel() {
+    const data = items.map(item => {
+        const std = inventoryStandards[item.id] || 0;
+        const shortage = Math.max(0, std - item.quantity);
+        return { item, shortage };
+    }).filter(({shortage}) => shortage > 0)
+    .map(({item, shortage}) => ({ 'פריט':item.name,'קטגוריה':item.category,'מחסן':item.warehouse,'מלאי נוכחי':item.quantity,'תקן רצוי':inventoryStandards[item.id],'כמות להזמנה':shortage,'יחידת מידה':item.unit }));
+    if (!data.length) { toast('אין פריטים חסרים','error'); return; }
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'הזמנת השלמה');
+    XLSX.writeFile(wb, `הזמנת_השלמה_${new Date().toLocaleDateString('he-IL').replace(/\//g,'-')}.xlsx`);
+    toast(`קובץ יוצא עם ${data.length} פריטים ✅`);
+}
+
+// ──────────────────────────────────────────────
+// Users
+// ──────────────────────────────────────────────
+function updatePositionSelects() {
+    const opts = customRoles.map(r => `<option value="${r.name}">${r.name}</option>`).join('');
+    ['newUserPosition','editUserPosition'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = opts;
+    });
+}
+
+function showAddUserForm()  { document.getElementById('addUserFormContainer').style.display='block'; updateParentUserSelect(); updatePositionSelects(); }
+function hideAddUserForm()  {
+    document.getElementById('addUserFormContainer').style.display='none';
+    ['newUsername','newPassword','newFullName'].forEach(id => document.getElementById(id).value='');
+}
+
+function updateParentUserSelect() {
+    const opts = '<option value="">אין - ברמה העליונה</option>' +
+        users.map(u => `<option value="${u.id}">${u.fullName} (${u.position||u.role})</option>`).join('');
+    ['newUserParent','editUserParent'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.innerHTML = opts;
+            if (id==='editUserParent' && editingUserId) {
+                const opt = el.querySelector(`option[value="${editingUserId}"]`);
+                if (opt) opt.disabled = true;
+            }
+        }
+    });
+}
+
+async function addUser() {
+    const email    = document.getElementById('newUsername').value.trim();
+    const password = document.getElementById('newPassword').value;
+    const fullName = document.getElementById('newFullName').value.trim();
+    const role     = document.getElementById('newUserRole').value;
+    const position = document.getElementById('newUserPosition').value;
+    const parentId = document.getElementById('newUserParent').value || null;
+
+    if (!email||!password||!fullName) { toast('נא למלא את כל השדות','error'); return; }
+    if (password.length < 6) { toast('הסיסמה חייבת להכיל לפחות 6 תווים','error'); return; }
+
+    showLoading();
+    try {
+        const { auth, db, createUserWithEmailAndPassword, doc, setDoc } = window._fb;
+        // Create Firebase Auth user
+        const cred = await createUserWithEmailAndPassword(auth, email, password);
+        // Save profile to Firestore
+        await setDoc(doc(db,'users', cred.user.uid), { email, fullName, role, position, parentId });
+        // Sign back in as original admin (Firebase signs in as new user automatically)
+        hideAddUserForm(); toast('המשתמש נוסף בהצלחה! ✅');
+    } catch(e) {
+        toast('שגיאה: ' + (e.code==='auth/email-already-in-use' ? 'אימייל זה כבר קיים' : e.message), 'error');
+    }
+    hideLoading();
+}
+
+function showEditUserModal(userId) {
+    const user = users.find(u => u.id === userId);
+    if (!user) return;
+    editingUserId = userId;
+    document.getElementById('editUsername').value  = user.email || user.username || '';
+    document.getElementById('editFullName').value  = user.fullName;
+    document.getElementById('editUserRole').value  = user.role;
+    updatePositionSelects(); updateParentUserSelect();
+    setTimeout(() => {
+        document.getElementById('editUserPosition').value = user.position || '';
+        document.getElementById('editUserParent').value   = user.parentId || '';
+    }, 50);
+    document.getElementById('editUserModal').classList.add('active');
+}
+function closeEditUserModal() { editingUserId=null; document.getElementById('editUserModal').classList.remove('active'); }
+
+async function saveEditUser() {
+    const user = users.find(u => u.id === editingUserId);
+    if (!user) return;
+    const fullName = document.getElementById('editFullName').value.trim();
+    const role     = document.getElementById('editUserRole').value;
+    const position = document.getElementById('editUserPosition').value;
+    const parentId = document.getElementById('editUserParent').value || null;
+    if (!fullName) { toast('נא למלא שם מלא','error'); return; }
+    if (parentId && parentId === editingUserId) { toast('משתמש לא יכול להיות הממונה של עצמו','error'); return; }
+
+    const { db, doc, updateDoc } = window._fb;
+    await updateDoc(doc(db,'users',editingUserId), { fullName, role, position, parentId });
+
+    if (editingUserId === currentUser.id) {
+        currentUser = { ...currentUser, fullName, role, position, parentId };
+        updateUIPermissions();
+    }
+    closeEditUserModal(); toast('המשתמש עודכן ✅');
+}
+
+function renderUsers() {
+    const container = document.getElementById('orgTreeContainer');
+    if (!container || !currentUser) return;
+    const roleNames  = { admin:'מנהל', warehouse:'ראש מחסן', shavag:'שכב"ג' };
+    const roleBadges = { admin:'badge-admin', warehouse:'badge-warehouse', shavag:'badge-shavag' };
+
+    function renderNode(userId, level=0) {
+        const user = users.find(u => u.id === userId);
+        if (!user) return '';
+        const children = users.filter(u => u.parentId === userId);
+        return `<div class="org-node org-level-${level%4}">
+            <div class="org-node-header">
+                <div class="org-node-info">
+                    <strong style="font-size:1.1em;">${user.fullName}</strong>
+                    ${user.position ? `<span class="badge" style="background:#667eea;color:white;">${user.position}</span>` : ''}
+                    <span class="badge ${roleBadges[user.role]}">${roleNames[user.role]}</span>
+                    <span style="color:#718096;">${user.email||''}</span>
+                </div>
+                <div style="display:flex;gap:10px;">
+                    <button class="btn btn-warning" style="padding:8px 16px;font-size:0.9em;" onclick="showEditUserModal('${user.id}')">✏️ ערוך</button>
+                    ${user.id!==currentUser.id ? `<button class="btn btn-danger" style="padding:8px 16px;font-size:0.9em;" onclick="deleteUser('${user.id}')">🗑️</button>` : '<span style="color:#718096;font-size:0.9em;padding:8px;">משתמש נוכחי</span>'}
+                </div>
+            </div>
+            ${children.length ? `<div class="org-node-children">${children.map(c=>renderNode(c.id,level+1)).join('')}</div>` : ''}
+        </div>`;
+    }
+    container.innerHTML = users.filter(u=>!u.parentId).map(u=>renderNode(u.id)).join('');
+}
+
+async function deleteUser(id) {
+    if (users.some(u => u.parentId === id)) { toast('לא ניתן למחוק משתמש שיש לו כפופים','error'); return; }
+    if (!confirm('למחוק משתמש זה?')) return;
+    const { db, doc, deleteDoc } = window._fb;
+    await deleteDoc(doc(db,'users',id));
+    toast('המשתמש נמחק ✅');
+}
+
+// ──────────────────────────────────────────────
+// Roles
+// ──────────────────────────────────────────────
+function showAddRoleForm() { document.getElementById('addRoleFormContainer').style.display='block'; }
+function hideAddRoleForm() { document.getElementById('addRoleFormContainer').style.display='none'; document.getElementById('newRoleName').value=''; }
+
+async function addRole() {
+    const name        = document.getElementById('newRoleName').value.trim();
+    const permissions = document.getElementById('newRolePermissions').value;
+    if (!name) { toast('נא להזין שם לתפקיד','error'); return; }
+    if (customRoles.find(r=>r.name===name)) { toast('תפקיד זה כבר קיים','error'); return; }
+    const { db, collection, doc, setDoc } = window._fb;
+    const newDoc = doc(collection(db,'roles'));
+    await setDoc(newDoc, { name, permissions });
+    hideAddRoleForm(); toast('התפקיד נוסף ✅');
+}
+
+function renderRoles() {
+    const container = document.getElementById('rolesContainer');
+    if (!container) return;
+    const pNames   = { admin:'הרשאות מלאות', warehouse:'ניהול מלאי והזמנות', shavag:'צפייה ובקשות בלבד' };
+    const pBadges  = { admin:'badge-admin', warehouse:'badge-warehouse', shavag:'badge-shavag' };
+    container.innerHTML = customRoles.map(role => `
+        <div class="item-card">
+            <div class="item-header">
+                <div class="item-name">${role.name}</div>
+                <div class="badge ${pBadges[role.permissions]}">${pNames[role.permissions]}</div>
+            </div>
+            <div class="item-details">
+                <div class="item-detail"><span class="detail-label">הרשאות:</span><span class="detail-value">${pNames[role.permissions]}</span></div>
+                <div class="item-detail"><span class="detail-label">משתמשים:</span><span class="detail-value">${users.filter(u=>u.position===role.name).length}</span></div>
+            </div>
+            <div class="item-actions"><button class="btn btn-danger" onclick="deleteRole('${role.id}')">🗑️ מחק</button></div>
+        </div>`).join('');
+}
+
+async function deleteRole(id) {
+    const role = customRoles.find(r=>r.id===id);
+    if (!role) return;
+    if (users.filter(u=>u.position===role.name).length>0) { toast('לא ניתן למחוק תפקיד עם משתמשים','error'); return; }
+    if (!confirm(`למחוק תפקיד "${role.name}"?`)) return;
+    const { db, doc, deleteDoc } = window._fb;
+    await deleteDoc(doc(db,'roles',id));
+    toast('התפקיד נמחק ✅');
+}
+
+async function initDefaultRoles() {
+    const defaults = [
+        { name:'מנהל', permissions:'admin' },
+        { name:'ראש מחסן', permissions:'warehouse' },
+        { name:'שכב"ג', permissions:'shavag' },
+        { name:'רכז שכבות', permissions:'warehouse' },
+        { name:'סגן מנהל', permissions:'warehouse' }
+    ];
+    const { db, collection, doc, setDoc } = window._fb;
+    for (const r of defaults) {
+        const newDoc = doc(collection(db,'roles'));
+        await setDoc(newDoc, r);
+    }
+}
+
+// ──────────────────────────────────────────────
+// Stats
+// ──────────────────────────────────────────────
+function renderStats() {
+    if (!currentUser) return;
+    const statsEl    = document.getElementById('statsContainer');
+    const lowStockEl = document.getElementById('lowStockContainer');
+    if (!statsEl) return;
+
+    const total       = items.reduce((s,i)=>s+i.quantity,0);
+    const lowItems    = items.filter(i=>i.quantity<=i.minQuantity&&i.quantity>0);
+    const critItems   = items.filter(i=>i.quantity===0);
+    const subIds      = getSubordinateIds(currentUser.id);
+    const pending     = shavagRequests.filter(r=>r.status==='pending'&&
+        (currentUser.role==='admin'||currentUser.role==='warehouse'||subIds.includes(r.createdBy))).length;
+
+    statsEl.innerHTML = `
+        <div class="stat-card"><div class="stat-number">${items.length}</div><div class="stat-label">סוגי פריטים</div></div>
+        <div class="stat-card"><div class="stat-number">${total}</div><div class="stat-label">סך פריטים במלאי</div></div>
+        <div class="stat-card" style="background:linear-gradient(135deg,#f56565 0%,#c53030 100%);">
+            <div class="stat-number">${critItems.length}</div><div class="stat-label">פריטים שאזלו</div></div>
+        <div class="stat-card" style="background:linear-gradient(135deg,#ed8936 0%,#c05621 100%);">
+            <div class="stat-number">${lowItems.length}</div><div class="stat-label">מלאי נמוך</div></div>
+        <div class="stat-card" style="background:linear-gradient(135deg,#4299e1 0%,#2c5282 100%);">
+            <div class="stat-number">${pending}</div><div class="stat-label">בקשות ממתינות</div></div>`;
+
+    const problem = [...critItems,...lowItems];
+    if (!problem.length) {
+        lowStockEl.innerHTML = `<div class="empty-state"><div class="empty-state-icon">✅</div><div class="empty-state-text">כל המלאי תקין!</div></div>`;
+        return;
+    }
+    lowStockEl.innerHTML = problem.map(item => {
+        const isCritical = item.quantity === 0;
+        const rec = Math.max(0, (inventoryStandards[item.id]||item.minQuantity*2) - item.quantity);
+        return `<div class="order-card">
+            <div class="order-header">
+                <div><strong style="font-size:1.2em;">${item.name}</strong>
+                <div style="color:#718096;margin-top:5px;">${item.category} - ${item.warehouse}</div></div>
+                <div class="order-status ${isCritical?'status-rejected':'status-pending'}">${isCritical?'🚨 אזל':'⚠️ נמוך'}</div>
+            </div>
+            <div class="item-details">
+                <div class="item-detail"><span class="detail-label">כמות נוכחית:</span><span class="detail-value">${item.quantity} ${item.unit}</span></div>
+                <div class="item-detail"><span class="detail-label">כמות מינימלית:</span><span class="detail-value">${item.minQuantity} ${item.unit}</span></div>
+                <div class="item-detail"><span class="detail-label">כמות להזמנה מומלצת:</span><span class="detail-value" style="color:#f56565;font-weight:bold;">${rec} ${item.unit}</span></div>
+            </div></div>`;
+    }).join('');
+}
+</script>
+</body>
+</html>
